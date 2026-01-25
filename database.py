@@ -34,9 +34,17 @@ class DatabaseHandler:
             pnl_net REAL,
             confidence REAL,
             regime TEXT,
-            status TEXT
+            regime TEXT,
+            status TEXT,
+            metrics TEXT
         )
         ''')
+        
+        # Attempt migration for existing users
+        try:
+            cursor.execute("ALTER TABLE trades ADD COLUMN metrics TEXT")
+        except:
+            pass # Column likely exists
         
         # Daily Performance table
         cursor.execute('''
@@ -88,8 +96,8 @@ class DatabaseHandler:
             query = '''
             INSERT INTO trades (
                 ticket, symbol, strategy, direction, entry_time, 
-                entry_price, sl, tp, volume, confidence, regime, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                entry_price, sl, tp, volume, confidence, regime, status, metrics
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             '''
             cursor.execute(query, (
                 trade_data.get('ticket'),
@@ -103,7 +111,8 @@ class DatabaseHandler:
                 trade_data.get('volume'),
                 trade_data.get('confidence'),
                 trade_data.get('regime'),
-                'OPEN'
+                'OPEN',
+                str(trade_data.get('metrics', {}))
             ))
             
         conn.commit()
@@ -115,3 +124,25 @@ class DatabaseHandler:
         df = pd.read_sql_query("SELECT * FROM trades", conn)
         conn.close()
         return df
+
+    def get_today_risk(self):
+        """Calculate total risk used today (sum of initial risk of open/closed trades)"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # We estimate risk used as: Sum of (Volume * Confidence * Base_Risk)? 
+        # Actually, RiskManager tracks `daily_risk_used` as a running counter of % risk.
+        # But for exact restart, we might just sum the 'pnl_net' of closed trades + current open risk?
+        # A simpler approach for the 'Hard Cap' is to sum Realized Loss + Open Risk.
+        
+        # Let's approximate by summing the Net Loss of today's closed trades.
+        today = datetime.now().date()
+        query = "SELECT SUM(pnl_net) FROM trades WHERE DATE(exit_time) = ? AND pnl_net < 0"
+        cursor.execute(query, (today,))
+        realized_loss = cursor.fetchone()[0] or 0.0
+        
+        conn.close()
+        
+        # Note: accurate tracking requires storing 'risk_pct' per trade. 
+        # For now, we return Realized Loss to check against Max Drawdown.
+        return abs(realized_loss)

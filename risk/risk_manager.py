@@ -6,6 +6,20 @@ class RiskManager:
     def __init__(self, database):
         self.db = database
         self.daily_risk_used = 0.0
+        self._load_risk_state()
+        
+    def _load_risk_state(self):
+        """Recover risk state from DB after restart"""
+        # Converting absolute $ loss to % of equity
+        try:
+            realized_loss = self.db.get_today_risk()
+            account = mt5.account_info()
+            if account and account.equity > 0:
+                self.daily_risk_used = realized_loss / account.equity
+                if self.daily_risk_used > 0:
+                    print(f"[Risk] Restored Daily Loss: {self.daily_risk_used:.2%}")
+        except Exception as e:
+            print(f"[Risk] Failed to load risk state: {e}")
         
     def check_daily_limits(self, potential_risk):
         """Check if trade exceeds max daily risk"""

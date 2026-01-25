@@ -7,6 +7,7 @@ import config
 from database import DatabaseHandler
 from utils.data_handler import MarketDataHandler
 from utils.executor import TradeExecutor
+from utils.news_handler import NewsHandler
 from risk.risk_manager import RiskManager
 from risk.portfolio import PortfolioManager
 
@@ -27,6 +28,7 @@ class TradingBot:
         # 2. Components
         self.db = DatabaseHandler()
         self.data_handler = MarketDataHandler()
+        self.news_handler = NewsHandler()
         self.executor = TradeExecutor()
         self.risk_manager = RiskManager(self.db)
         self.portfolio = PortfolioManager()
@@ -77,10 +79,26 @@ class TradingBot:
             df = self.data_handler.get_data(symbol)
             if df is None:
                 continue
-                
-            # 2. Train ML (Periodically - Logic simplified here)
-            # if current_time.minute == 0: 
-            #    self.strategies['ml_ensemble'].train_model(df)
+
+            # 1.5 News Filter
+            sentiment, safe_to_trade = self.news_handler.get_market_sentiment(symbol)
+            if not safe_to_trade:
+                print(f"  [News] High impact news detected for {symbol}. Skipped.")
+                continue
+            
+            if abs(sentiment) > 0.5:
+                print(f"  [News] Sentiment Bias: {sentiment:.2f}")
+
+            # 2. Train ML (If model is missing or periodically)
+            # Train if no model exists OR every hour at minute 0
+            is_new_hour = (current_time.minute == 0)
+            model_missing = (self.strategies['ml_ensemble'].model is None)
+            
+            if model_missing or is_new_hour:
+                 print(f"  [ML] Training Model for {symbol}...")
+                 self.strategies['ml_ensemble'].train_model(df)
+                 # Reload strategy to ensure model is active
+                 # (In a real system, we might need to handle this more gracefully)
             
             # 3. Aggregate Signals
             votes = self.aggregate_signals(symbol, df)
@@ -112,6 +130,15 @@ class TradingBot:
                 )
                 
                 if lots > 0:
+                     # 5.5 Check Sentiment Bias
+                    # If sentiment is strongly negative, don't BUY
+                    if winner == "BUY" and sentiment < -0.3:
+                        print(f"  [News] Trade blocked: Positive signal but Negative Sentiment ({sentiment:.2f})")
+                        continue
+                    elif winner == "SELL" and sentiment > 0.3:
+                        print(f"  [News] Trade blocked: Negative signal but Positive Sentiment ({sentiment:.2f})")
+                        continue
+
                      # 6. Execute
                     result = self.executor.execute_trade(
                         symbol, winner, lots, 
@@ -136,14 +163,20 @@ class TradingBot:
                             'volume': lots,
                             'confidence': max_score,
                             'regime': 'Dynamic',
-                            'status': 'OPEN'
+                            'status': 'OPEN',
+                            'metrics': {
+                                'z_score': latest.get('z_score', 0),
+                                'rsi': latest.get('rsi', 0),
+                                'sentiment': sentiment,
+                                'atr': latest.get('atr', 0)
+                            }
                         }
                         self.db.log_trade(trade_record)
                         self.risk_manager.update_daily_risk(config.BASE_RISK_PER_TRADE * max_score)
                 else:
                     print("  [Risk] Trade rejected (Size 0)")
             else:
-                print(f"  [Wait] No consensus for {symbol}")
+                print(f"  [Wait] No consensus for {symbol} (Winner: {winner} score {max_score:.2f} < 0.40)")
 
     def start(self):
         print("System Started. Press Ctrl+C to stop.")

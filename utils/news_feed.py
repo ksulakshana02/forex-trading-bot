@@ -69,7 +69,9 @@ class NewsHarvester:
             "https://finance.yahoo.com/news/rssindex",
             "https://www.dailyfx.com/feeds/market-news",
             "https://www.investing.com/rss/news_25.rss",  # Investing.com Forex
-            "https://www.coindesk.com/arc/outboundfeeds/rss/" # CoinDesk (Crypto)
+            "https://www.coindesk.com/arc/outboundfeeds/rss/",
+            "https://www.forexlive.com/feed/news",        # PRO SOURCE: Extremely fast sentiment
+            "https://www.fxstreet.com/rss/news"           # PRO SOURCE: Good coverage
         ]
         print("Advanced News Harvester initialized.")
 
@@ -109,4 +111,6 @@ class NewsHarvester:
         if "dailyfx" in url: return "DailyFX"
         if "investing" in url: return "Investing.com"
         if "coindesk" in url: return "CoinDesk"
+        if "forexlive" in url: return "ForexLive"
+        if "fxstreet" in url: return "FXStreet"
         return "Unknown"
