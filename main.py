@@ -28,7 +28,7 @@ class TradingBot:
         # 2. Components
         self.db = DatabaseHandler()
         self.data_handler = MarketDataHandler()
-        self.news_handler = NewsHandler()
+        # self.news_handler = NewsHandler()
         self.executor = TradeExecutor()
         self.risk_manager = RiskManager(self.db)
         self.portfolio = PortfolioManager()
@@ -81,13 +81,17 @@ class TradingBot:
                 continue
 
             # 1.5 News Filter
-            sentiment, safe_to_trade = self.news_handler.get_market_sentiment(symbol)
-            if not safe_to_trade:
-                print(f"  [News] High impact news detected for {symbol}. Skipped.")
-                continue
+            # 1.5 News Filter
+            # sentiment, safe_to_trade = self.news_handler.get_market_sentiment(symbol)
+            sentiment = 0.0
+            safe_to_trade = True
             
-            if abs(sentiment) > 0.5:
-                print(f"  [News] Sentiment Bias: {sentiment:.2f}")
+            # if not safe_to_trade:
+            #     print(f"  [News] High impact news detected for {symbol}. Skipped.")
+            #     continue
+            
+            # if abs(sentiment) > 0.5:
+            #     print(f"  [News] Sentiment Bias: {sentiment:.2f}")
 
             # 2. Train ML (If model is missing or periodically)
             # Train if no model exists OR every hour at minute 0
@@ -142,7 +146,7 @@ class TradingBot:
                      # 6. Execute
                     result = self.executor.execute_trade(
                         symbol, winner, lots, 
-                        price=0, # Market execution handled in executor
+                        # price=0, # Removed as not supported by signature
                         sl=latest['close'] - sl_distance if winner == 'BUY' else latest['close'] + sl_distance,
                         tp=latest['close'] + tp_distance if winner == 'BUY' else latest['close'] - tp_distance,
                         strategy_name="Ensemble",

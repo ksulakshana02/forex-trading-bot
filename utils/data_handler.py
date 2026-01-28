@@ -10,7 +10,7 @@ class MarketDataHandler:
         if not mt5.initialize():
             print("MT5 initialization failed in DataHandler")
 
-    def get_data(self, symbol, timeframe=config.TIMEFRAME, lookback=500):
+    def get_data(self, symbol, timeframe=config.TIMEFRAME, lookback=1000):
         """
         Fetch data from MT5 and calculate technical indicators.
         """
