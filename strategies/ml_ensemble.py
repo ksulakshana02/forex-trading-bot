@@ -58,7 +58,7 @@ class MLEnsembleStrategy(BaseStrategy):
         joblib.dump(self.model, self.model_path)
         print(f"[ML] Model saved to {self.model_path}")
 
-    def generate_signal(self, df: pd.DataFrame):
+    def generate_signal(self, df: pd.DataFrame, symbol: str = ""):
         if self.model is None:
             return None, 0.0
             

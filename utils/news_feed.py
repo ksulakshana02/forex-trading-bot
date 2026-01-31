@@ -61,6 +61,8 @@ import feedparser
 import pandas as pd
 from datetime import datetime
 import time
+import cloudscraper
+from bs4 import BeautifulSoup
 
 class NewsHarvester:
     def __init__(self):
@@ -73,7 +75,8 @@ class NewsHarvester:
             "https://www.forexlive.com/feed/news",        # PRO SOURCE: Extremely fast sentiment
             "https://www.fxstreet.com/rss/news"           # PRO SOURCE: Good coverage
         ]
-        print("Advanced News Harvester initialized.")
+        self.scraper = cloudscraper.create_scraper() # create a Cloudflare-bypassing scraper
+        print("Advanced News Harvester (Cloudscraper) initialized.")
 
     def fetch_latest_news(self, limit=5):
         all_news = []
@@ -90,12 +93,20 @@ class NewsHarvester:
                     if entry.title in seen_titles:
                         continue
                     seen_titles.add(entry.title)
+                    
+                    # Try to get summary/description
+                    summary = ""
+                    if hasattr(entry, 'summary'):
+                         summary = entry.summary
+                    elif hasattr(entry, 'description'):
+                         summary = entry.description
 
                     news_item = {
                         'source': self._get_source_name(url),
                         'title': entry.title,
                         'link': entry.link,
-                        'published': datetime.now() # Simplified for speed
+                        'published': datetime.now(), # Simplified for speed
+                        'summary': summary
                     }
                     all_news.append(news_item)
             except Exception as e:
@@ -105,6 +116,64 @@ class NewsHarvester:
             return pd.DataFrame(all_news)
         else:
             return pd.DataFrame()
+
+    def fetch_article_content(self, url):
+        """
+        Scrapes the main text content from a news URL.
+        """
+        try:
+            # Custom headers for difficult sites
+            headers = {}
+            if "wsj.com" in url or "bloomberg.com" in url or "reuters.com" in url or "investing.com" in url:
+                # Mimic Googlebot to bypass some soft paywalls and anti-bot checks
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+                    "Referer": "https://www.google.com/"
+                }
+                # Use standard requests for this hack, as cloudscraper might override UA
+                import requests
+                response = requests.get(url, headers=headers, timeout=10)
+            else:
+                # Use cloudscraper for standard sites (bypasses Cloudflare)
+                response = self.scraper.get(url, timeout=10)
+            
+            if response.status_code != 200:
+                # Silently fail for 401/403 to avoid console spam for paywalls
+                if response.status_code not in [401, 403]:
+                    print(f"[Scraper] Failed to fetch {url} (Status: {response.status_code})")
+                return None
+                
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Heuristic to find main content (works for many finance sites)
+            # 1. Try common article tags
+            paragraphs = []
+            
+            # Specific site logic
+            if "wsj.com" in url:
+                paragraphs = soup.find_all('p') # WSJ often puts content in P tags directly under main
+            else:
+                article_body = soup.find('article') or soup.find('div', class_='article-content') or soup.find('div', class_='content') or soup.find('div', class_='articleBody')
+                
+                if article_body:
+                    paragraphs = article_body.find_all('p')
+                else:
+                    # Fallback: just all paragraphs
+                    paragraphs = soup.find_all('p')
+                
+            text = " ".join([p.get_text() for p in paragraphs])
+            
+            # Clean up
+            text = " ".join(text.split()) # Remove excess whitespace
+            
+            if len(text) < 200: # Too short, probably failed or just a preview
+                return None
+                
+            return text
+            
+        except Exception as e:
+            # print(f"[Scraper] Error scraping {url}: {e}") # Suppress generic errors
+            return None
 
     def _get_source_name(self, url):
         if "yahoo" in url: return "Yahoo"

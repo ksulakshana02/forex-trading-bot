@@ -1,5 +1,6 @@
 from .news_feed import NewsHarvester
 from .sentiment_engine import SentimentEngine
+from .llm_analyzer import LLMMarketAnalyzer
 from datetime import datetime
 import pandas as pd
 
@@ -9,6 +10,7 @@ class NewsHandler:
         try:
             self.harvester = NewsHarvester()
             self.brain = SentimentEngine()
+            self.llm_brain = LLMMarketAnalyzer()
             self.active = True
         except Exception as e:
             print(f"[News] Failed to init news system: {e}")
@@ -41,6 +43,36 @@ class NewsHandler:
             if not relevant_headlines:
                 return 0.0, True
 
+            # === LLM ENHANCEMENT ===
+            # If we have the LLM, let's try to get a deeper signal from the most relevant news
+            if self.llm_brain.llm:
+                # Take the most recent relevant headline and fetch content
+                latest_relevant = news_df[news_df['title'].isin(relevant_headlines)].iloc[0]
+                article_url = latest_relevant['link']
+                
+                print(f"[News] Deep analyzing: {latest_relevant['title']}")
+                article_content = self.harvester.fetch_article_content(article_url)
+                
+                # FALLBACK: Use RSS summary if scraping failed or returned empty
+                if not article_content and 'summary' in latest_relevant and len(latest_relevant['summary']) > 50:
+                    print(f"  [Scraper] Using RSS summary fallback (Length: {len(latest_relevant['summary'])})")
+                    article_content = latest_relevant['summary']
+                
+                if article_content:
+                    llm_result = self.llm_brain.analyze_article(article_content)
+                    if llm_result:
+                        print(f"  [LLM] Signal: {llm_result['decision']} ({llm_result['confidence']:.2f})")
+                        print(f"  [LLM] Reason: {llm_result['reasoning']}")
+                        
+                        # Override sentiment score
+                        if llm_result['decision'] == 'BUY':
+                            return float(llm_result['confidence']), True
+                        elif llm_result['decision'] == 'SELL':
+                            return -float(llm_result['confidence']), True
+                        else:
+                            return 0.0, True
+            
+            # === FALLBACK TO HL SENTIMENT ===
             # Analyze sentiment of relevant headlines
             sentiment_score = 0.0
             count = 0

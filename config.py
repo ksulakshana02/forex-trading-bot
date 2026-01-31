@@ -13,10 +13,11 @@ MAX_CORRELATION = 0.7  # Max allowed correlation between active pairs
 
 # === STRATEGY ALLOCATION ===
 STRATEGY_WEIGHTS = {
-    'statistical_arbitrage': 0.30,
-    'momentum_breakout': 0.25,
-    'volatility_regime': 0.20,
-    'ml_ensemble': 0.25
+    'statistical_arbitrage': 0.20,
+    'momentum_breakout': 0.20,
+    'volatility_regime': 0.15,
+    'ml_ensemble': 0.20,
+    'fundamental': 0.30
 }
 
 # === DATABASE ===

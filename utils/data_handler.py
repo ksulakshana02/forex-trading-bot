@@ -16,8 +16,21 @@ class MarketDataHandler:
         """
         rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, lookback)
         
+        if rates is None:
+            # Attempt Reconnection
+            error_code, error_desc = mt5.last_error()
+            print(f"[Data] Failed to fetch {symbol} (Error: {error_code} {error_desc}). Reconnecting...")
+            
+            mt5.shutdown()
+            if not mt5.initialize():
+                 print(f"[Data] MT5 Re-init Failed: {mt5.last_error()}")
+                 return None
+            
+            # Retry Once
+            rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, lookback)
+            
         if rates is None or len(rates) < lookback:
-            print(f"Failed to fetch rates for {symbol}")
+            print(f"[Data] Generic Failure or insufficient data for {symbol}")
             return None
             
         df = pd.DataFrame(rates)

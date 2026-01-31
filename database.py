@@ -146,3 +146,46 @@ class DatabaseHandler:
         # Note: accurate tracking requires storing 'risk_pct' per trade. 
         # For now, we return Realized Loss to check against Max Drawdown.
         return abs(realized_loss)
+
+    def get_strategy_performance(self, lookback=50):
+        """
+        Calculate win rate for each strategy over the last N trades.
+        Returns: Dict {strategy_name: win_rate}
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Get last N closed trades
+        query = '''
+        SELECT strategy, pnl_net 
+        FROM trades 
+        WHERE status = 'CLOSED' 
+        ORDER BY exit_time DESC 
+        LIMIT ?
+        '''
+        cursor.execute(query, (lookback,))
+        trades = cursor.fetchall()
+        
+        conn.close()
+        
+        if not trades:
+            return {}
+            
+        stats = {}
+        for strategy, pnl in trades:
+            if strategy not in stats:
+                stats[strategy] = {'wins': 0, 'total': 0}
+            
+            stats[strategy]['total'] += 1
+            if pnl > 0:
+                stats[strategy]['wins'] += 1
+                
+        # Calculate win rates
+        win_rates = {}
+        for strategy, data in stats.items():
+            if data['total'] > 0:
+                win_rates[strategy] = data['wins'] / data['total']
+            else:
+                win_rates[strategy] = 0.0
+                
+        return win_rates

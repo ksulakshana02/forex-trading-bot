@@ -6,12 +6,13 @@ class BaseStrategy(ABC):
         self.name = name
 
     @abstractmethod
-    def generate_signal(self, df: pd.DataFrame):
+    def generate_signal(self, df: pd.DataFrame, symbol: str = ""):
         """
         Analyze the provided DataFrame and return a signal.
         
         Args:
             df (pd.DataFrame): Market data with indicators.
+            symbol (str): The currency pair symbol (e.g. "EURUSD")
             
         Returns:
             tuple: (signal, confidence)

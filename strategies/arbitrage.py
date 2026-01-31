@@ -5,7 +5,7 @@ class StatisticalArbitrageStrategy(BaseStrategy):
     def __init__(self):
         super().__init__("Statistical Arbitrage")
 
-    def generate_signal(self, df: pd.DataFrame):
+    def generate_signal(self, df: pd.DataFrame, symbol: str = ""):
         latest = df.iloc[-1]
         
         # Z-Score Logic

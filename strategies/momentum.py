@@ -5,7 +5,7 @@ class MomentumBreakoutStrategy(BaseStrategy):
     def __init__(self):
         super().__init__("Momentum Breakout")
 
-    def generate_signal(self, df: pd.DataFrame):
+    def generate_signal(self, df: pd.DataFrame, symbol: str = ""):
         latest = df.iloc[-1]
         
         # Trend Consensus

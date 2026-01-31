@@ -16,6 +16,7 @@ from strategies.arbitrage import StatisticalArbitrageStrategy
 from strategies.momentum import MomentumBreakoutStrategy
 from strategies.volatility import VolatilityRegimeStrategy
 from strategies.ml_ensemble import MLEnsembleStrategy
+from strategies.fundamental import FundamentalStrategy
 
 class TradingBot:
     def __init__(self):
@@ -28,7 +29,7 @@ class TradingBot:
         # 2. Components
         self.db = DatabaseHandler()
         self.data_handler = MarketDataHandler()
-        # self.news_handler = NewsHandler()
+        self.news_handler = NewsHandler()
         self.executor = TradeExecutor()
         self.risk_manager = RiskManager(self.db)
         self.portfolio = PortfolioManager()
@@ -38,7 +39,8 @@ class TradingBot:
             'statistical_arbitrage': StatisticalArbitrageStrategy(),
             'momentum_breakout': MomentumBreakoutStrategy(),
             'volatility_regime': VolatilityRegimeStrategy(),
-            'ml_ensemble': MLEnsembleStrategy()
+            'ml_ensemble': MLEnsembleStrategy(),
+            'fundamental': FundamentalStrategy(self.news_handler)
         }
         
         print(f"[Bot] Initialized with {len(config.SYMBOLS)} pairs and {len(self.strategies)} strategies.")
@@ -53,7 +55,7 @@ class TradingBot:
         
         for name, strategy in self.strategies.items():
             weight = self.portfolio.get_strategy_weight(name)
-            signal, confidence = strategy.generate_signal(df)
+            signal, confidence = strategy.generate_signal(df, symbol=symbol)
             
             if signal:
                 print(f"  > {name}: {signal} (Conf: {confidence:.2f}, Weight: {weight})")
@@ -75,6 +77,12 @@ class TradingBot:
             self.risk_manager.reset_daily_risk()
         
         for symbol in config.SYMBOLS:
+            # 0. Check for existing positions
+            positions = mt5.positions_get(symbol=symbol)
+            if positions:
+                print(f"  [Trade] Position already open for {symbol}. Skipping.")
+                continue
+
             # 1. Get Data
             df = self.data_handler.get_data(symbol)
             if df is None:
@@ -101,8 +109,10 @@ class TradingBot:
             if model_missing or is_new_hour:
                  print(f"  [ML] Training Model for {symbol}...")
                  self.strategies['ml_ensemble'].train_model(df)
-                 # Reload strategy to ensure model is active
-                 # (In a real system, we might need to handle this more gracefully)
+            
+            # 2.5 Dynamic Portfolio Optimization (At the start of new hour)
+            if is_new_hour and symbol == config.SYMBOLS[0]: # Run once per hour
+                self.portfolio.optimize_weights(self.db)
             
             # 3. Aggregate Signals
             votes = self.aggregate_signals(symbol, df)
@@ -142,6 +152,17 @@ class TradingBot:
                     elif winner == "SELL" and sentiment > 0.3:
                         print(f"  [News] Trade blocked: Negative signal but Positive Sentiment ({sentiment:.2f})")
                         continue
+
+                    # 5.6 Check Correlation (Risk Management)
+                    # Get ALL open positions to check against
+                    all_positions = mt5.positions_get()
+                    if all_positions:
+                        allowed = self.portfolio.check_correlation(
+                            symbol, winner, all_positions, self.data_handler
+                        )
+                        if not allowed:
+                            print(f"  [Risk] Trade blocked due to High Correlation with existing positions.")
+                            continue
 
                      # 6. Execute
                     result = self.executor.execute_trade(
